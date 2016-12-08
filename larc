@@ -39,11 +39,11 @@ All stories are stored in epub form; re-running this script will update any prev
         if l[-1]=='': del(l[-1])
         click.echo("Category file opened.")
         url_list=deque()
-        retrieving_urls = True
         click.echo("Starting {} download worker threads.".format(thread_count))
+        finished_retrieving_urls = threading.Event()
         threads = []
         for r in range(thread_count):
-            t = threading.Thread(target=download_worker, args=(url_list, archive_dir,))
+            t = threading.Thread(target=download_worker, args=(url_list, archive_dir, finished_retrieving_urls,))
             t.start()
             threads.append(t)
         for category in l:
@@ -76,20 +76,22 @@ All stories are stored in epub form; re-running this script will update any prev
                     page=page-1 # the last increment got us the 301
                     click.echo("Finished retrieving urls for category {0}; {1} total pages.".format(category, str(page)))
                     running=False # end the category page retrieval loop
-        retrieving_urls = False # done collecting urls
+        finished_retrieving_urls.set() # done collecting urls now; if threads notice that the deque is empty they can exit
 
     if zip_archive:
         shutil.make_archive(zip_name, "zip", archive_dir)
 
 
-def download_worker(d, archive_dir):
+def download_worker(d, archive_dir, finished_retrieving_urls):
     """Worker function that pops and downloads a url off the provided deque."""
     while True:
         try:
             u = d.pop()
             subprocess.call(['fanficfare', '--update-epub', u[0]], cwd=os.path.join(archive_dir, u[1]))
-        except IndexError:
-            pass
+        except IndexError: # No more items in the deque to pop
+            if finished_retrieving_urls.isSet(): # if we're done getting urls
+                break # if the deque is empty and we have all the urls our job is done
+    return
 
 
 if __name__ == '__main__':
