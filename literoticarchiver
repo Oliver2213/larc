@@ -28,33 +28,34 @@ A directory for each category will be created.
 
 All stories are stored in epub form; re-running this script will update any previously stored stories and download new ones."""
     
-    print("Starting literotica archival...")
+    click.echo("Starting literotica archival...")
     with open(category_file, 'r') as f:
         # l = f.readlines()
         l = f.read().split('\n')
-        print("Category file opened.")
+        if l[-1]=='': del(l[-1])
+        click.echo("Category file opened.")
         for category in l:
             category = unicode(category)
             category.strip()
-            print("Processing category %s" % category)
+            click.echo("Processing category %s" % category)
             if os.path.exists(os.path.join(archive_dir, category)) == False: # a directory for this category doesn't exist
-                print("Making category directory.")
+                click.echo("Making category directory.")
                 os.makedirs(os.path.join(archive_dir, category))
             os.chdir(os.path.join(archive_dir, category))
             page=1
-            print("Starting page and story retrieval for category %s" % category)
+            click.echo("Starting page and story retrieval for category %s" % category)
             running=True
             while running:
                 url = '{0}{1}{2}{3}'.format(base_url, 'c/', category+'/', str(page)+'-page/')
-                print("Using URL %s" % (url))
+                click.echo("Using URL %s" % (url))
                 r=requests.head(url) 
-                print (r.url)
-                print("Status code is %s." %(r.status_code))
+                click.echo (r.url)
+                click.echo("Status code is %s." %(r.status_code))
                 if r.status_code==200: # The url is valid; download stories
                     subprocess.call(['fanficfare', '--download-list={0}'.format(url), '--update-epub'], stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
                     page+=1            
                 elif r.status_code==301: # no more pages; literotica is trying to redirect us back to the last valid page
-                    print("Finished downloading stories for category {0}; {1} total pages.".format(category, str(pages)))
+                    click.echo("Finished downloading stories for category {0}; {1} total pages.".format(category, str(pages)))
                     running=False # end the category page retrieval loop
 
     if zip_archive:
