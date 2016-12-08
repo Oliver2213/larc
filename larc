@@ -3,11 +3,14 @@
 # The literotica archiver
 # Author: Blake Oliver <oliver22213@me.com>
 
+from collections import deque
 import datetime
 import os
 import shutil
 import subprocess
 import sys
+import threading
+
 import click
 import requests
 
@@ -15,11 +18,12 @@ import requests
 @click.command()
 @click.option('--archive-dir', '--dir', 'archive_dir', default='./literotica', help="Directory to store archive files", type=click.Path(exists=True, writable=True))
 @click.option('--base-url', default='https://literotica.com/', help='Base URL for literotica')
+@click.option('--thread-count', default=2, show_default=True, help="The number of download worker threads")
 @click.option('-z', '--zip-archive', default=False, help='Zip the archive directory after downloading stories')
 @click.option('-zn', '--zip-name', default='literotica_archive_'+str(datetime.datetime.now()), help='Filename for the zip archive without the .zip extention')
 
 @click.argument('category-file', type=click.Path(file_okay=True, exists=True, readable=True))
-def literoticarchiver(archive_dir, base_url, category_file, zip_archive, zip_name):
+def literoticarchiver(archive_dir, base_url, category_file, thread_count, zip_archive, zip_name):
     """ Literoticarchiver - A script to archive the given literotica categories.
 
 Category_file is a path to a file that contains the categories you want archived, one per line.
@@ -34,7 +38,14 @@ All stories are stored in epub form; re-running this script will update any prev
         l = f.read().split('\n')
         if l[-1]=='': del(l[-1])
         click.echo("Category file opened.")
-        url_list=[]
+        url_list=deque()
+        retrieving_urls = True
+        click.echo("Starting {} download worker threads.".format(thread_count))
+        threads = []
+        for r in range(thread_count):
+            t = threading.Thread(target=download_worker, args=(url_list, archive_dir,))
+            t.start()
+            threads.append(t)
         for category in l:
             category = unicode(category)
             category.strip()
@@ -59,17 +70,27 @@ All stories are stored in epub form; re-running this script will update any prev
                     for url in u:
                         t = url, category
                         u_t.append(t)
-                    url_list += u_t # add our urls to the main list of ones to be downloaded
+                    url_list.extend(u_t) # add our urls to the main list of ones to be downloaded
                     page+=1
                 elif r.status_code==301: # no more pages; literotica is trying to redirect us back to the last valid page
                     page=page-1 # the last increment got us the 301
                     click.echo("Finished retrieving urls for category {0}; {1} total pages.".format(category, str(page)))
                     running=False # end the category page retrieval loop
-        for u in url_list: # retrieve stories
-            subprocess.call(['fanficfare', '--update-epub', u[0]], cwd=os.path.join(archive_dir, u[1]))
+        retrieving_urls = False # done collecting urls
 
     if zip_archive:
         shutil.make_archive(zip_name, "zip", archive_dir)
+
+
+def download_worker(d):
+    """Worker function that pops and downloads a url off the provided deque."""
+    while True:
+        try:
+            u = d.pop()
+            subprocess.call(['fanficfare', '--update-epub', u[0]], cwd=os.path.join(archive_dir, u[1]))
+        except IndexError:
+            pass
+
 
 if __name__ == '__main__':
     literoticarchiver()
