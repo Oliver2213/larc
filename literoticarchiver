@@ -34,6 +34,7 @@ All stories are stored in epub form; re-running this script will update any prev
         l = f.read().split('\n')
         if l[-1]=='': del(l[-1])
         click.echo("Category file opened.")
+        url_list=[]
         for category in l:
             category = unicode(category)
             category.strip()
@@ -41,22 +42,30 @@ All stories are stored in epub form; re-running this script will update any prev
             if os.path.exists(os.path.join(archive_dir, category)) == False: # a directory for this category doesn't exist
                 click.echo("Making category directory.")
                 os.makedirs(os.path.join(archive_dir, category))
-            os.chdir(os.path.join(archive_dir, category))
             page=1
-            click.echo("Starting page and story retrieval for category %s" % category)
+            click.echo("Starting story url retrieval for category %s" % category)
             running=True
             while running:
                 url = '{0}{1}{2}{3}'.format(base_url, 'c/', category+'/', str(page)+'-page/')
                 click.echo("Using URL %s" % (url))
                 r=requests.head(url) 
-                click.echo (r.url)
                 click.echo("Status code is %s." %(r.status_code))
-                if r.status_code==200: # The url is valid; download stories
-                    subprocess.call(['fanficfare', '--download-list={0}'.format(url), '--update-epub'], stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
-                    page+=1            
+                if r.status_code==200: # The category page url is valid; extract valid story urls
+                    u = subprocess.check_output(['fanficfare', '-n', url]) # get a list of valid storyurls from the category page
+                    u = u.split('\n') # split output by lines
+                    if u[-1] == '': del(u[-1])
+                    u_t = []
+                    # associate every url with the current category in a tuple, so later we can send the downloaded story to the right place
+                    for url in u:
+                        t = url, category
+                        U_t.append(t)
+                    url_list += u_t # add our urls to the main list of ones to be downloaded
+                    page+=1
                 elif r.status_code==301: # no more pages; literotica is trying to redirect us back to the last valid page
-                    click.echo("Finished downloading stories for category {0}; {1} total pages.".format(category, str(pages)))
+                    click.echo("Finished retrieving urls for category {0}; {1} total pages.".format(category, str(pages)))
                     running=False # end the category page retrieval loop
+        for u in url_list: # retrieve stories
+            subprocess.call(['fanficfare', '--update-epub', u[0]], cwd=os.path.join(archive_dir, u[1]))
 
     if zip_archive:
         shutil.make_archive(zip_name, "zip", archive_dir)
