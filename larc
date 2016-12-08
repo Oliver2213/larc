@@ -33,11 +33,11 @@ A directory for each category will be created.
 All stories are stored in epub form; re-running this script will update any previously stored stories and download new ones."""
     
     click.echo("Starting literotica archival...")
-    with open(category_file, 'r') as f:
-        # l = f.readlines()
-        l = f.read().split('\n')
+    try: # huge try / except block to handle KeyboardInterrupt
+        with open(category_file, 'r') as f:
+            l = f.read().split('\n')
         if l[-1]=='': del(l[-1])
-        click.echo("Category file opened.")
+        click.echo("Category file processed.")
         url_list=deque()
         click.echo("Starting {} download worker threads.".format(thread_count))
         finished_retrieving_urls = threading.Event()
@@ -78,10 +78,12 @@ All stories are stored in epub form; re-running this script will update any prev
                     running=False # end the category page retrieval loop
         finished_retrieving_urls.set() # done collecting urls now; if threads notice that the deque is empty they can exit
 
-    if zip_archive:
-        shutil.make_archive(zip_name, "zip", archive_dir)
-
-
+        if zip_archive:
+            shutil.make_archive(zip_name, "zip", archive_dir)
+    except KeyboardInterrupt:
+        # We've got some threads to kill
+        for t in threads:
+            t.join()
 def download_worker(d, archive_dir, finished_retrieving_urls):
     """Worker function that pops and downloads a url off the provided deque."""
     while True:
