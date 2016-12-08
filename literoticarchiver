@@ -1,0 +1,64 @@
+#!/usr/bin/python
+
+# The literotica archiver
+# Author: Blake Oliver <oliver22213@me.com>
+
+import datetime
+import os
+import shutil
+import subprocess
+import sys
+import click
+import requests
+
+
+@click.command()
+@click.option('--archive-dir', '--dir', 'archive_dir', default='./literotica', help="Directory to store archive files", type=click.Path(exists=True, writable=True))
+@click.option('--base-url', default='https://literotica.com/', help='Base URL for literotica')
+@click.option('-z', '--zip-archive', default=False, help='Zip the archive directory after downloading stories')
+@click.option('-zn', '--zip-name', default='literotica_archive_'+str(datetime.datetime.now()), help='Filename for the zip archive without the .zip extention')
+
+@click.argument('category-file', type=click.Path(file_okay=True, exists=True, readable=True))
+def literoticarchiver(archive_dir, base_url, category_file, zip_archive, zip_name):
+    """ Literoticarchiver - A script to archive the given literotica categories.
+
+Category_file is a path to a file that contains the categories you want archived, one per line.
+
+A directory for each category will be created.
+
+All stories are stored in epub form; re-running this script will update any previously stored stories and download new ones."""
+    
+    print("Starting literotica archival...")
+    with open(category_file, 'r') as f:
+        # l = f.readlines()
+        l = f.read().split('\n')
+        print("Category file opened.")
+        for category in l:
+            category = unicode(category)
+            category.strip()
+            print("Processing category %s" % category)
+            if os.path.exists(os.path.join(archive_dir, category)) == False: # a directory for this category doesn't exist
+                print("Making category directory.")
+                os.makedirs(os.path.join(archive_dir, category))
+            os.chdir(os.path.join(archive_dir, category))
+            page=1
+            print("Starting page and story retrieval for category %s" % category)
+            running=True
+            while running:
+                url = '{0}{1}{2}{3}'.format(base_url, 'c/', category+'/', str(page)+'-page/')
+                print("Using URL %s" % (url))
+                r=requests.head(url) 
+                print (r.url)
+                print("Status code is %s." %(r.status_code))
+                if r.status_code==200: # The url is valid; download stories
+                    subprocess.call(['fanficfare', '--download-list={0}'.format(url), '--update-epub'], stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
+                    page+=1            
+                elif r.status_code==301: # no more pages; literotica is trying to redirect us back to the last valid page
+                    print("Finished downloading stories for category {0}; {1} total pages.".format(category, str(pages)))
+                    running=False # end the category page retrieval loop
+
+    if zip_archive:
+        shutil.make_archive(zip_name, "zip", archive_dir)
+
+if __name__ == '__main__':
+    literoticarchiver()
