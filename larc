@@ -82,7 +82,7 @@ All stories are stored in epub form; re-running this script will update any prev
         shutil.make_archive(zip_name, "zip", archive_dir)
 
 
-def download_worker(d):
+def download_worker(d, archive_dir):
     """Worker function that pops and downloads a url off the provided deque."""
     while True:
         try:
