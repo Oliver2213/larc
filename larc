@@ -58,7 +58,7 @@ All stories are stored in epub form; re-running this script will update any prev
                     # associate every url with the current category in a tuple, so later we can send the downloaded story to the right place
                     for url in u:
                         t = url, category
-                        U_t.append(t)
+                        u_t.append(t)
                     url_list += u_t # add our urls to the main list of ones to be downloaded
                     page+=1
                 elif r.status_code==301: # no more pages; literotica is trying to redirect us back to the last valid page
