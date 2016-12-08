@@ -62,6 +62,7 @@ All stories are stored in epub form; re-running this script will update any prev
                     url_list += u_t # add our urls to the main list of ones to be downloaded
                     page+=1
                 elif r.status_code==301: # no more pages; literotica is trying to redirect us back to the last valid page
+                    page=page-1 # the last increment got us the 301
                     click.echo("Finished retrieving urls for category {0}; {1} total pages.".format(category, str(page)))
                     running=False # end the category page retrieval loop
         for u in url_list: # retrieve stories
