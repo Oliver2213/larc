@@ -69,13 +69,13 @@ All stories are stored in epub form; re-running this script will update any prev
         for category in l:
             category = unicode(category)
             category.strip()
-            log.info("Processing category {}".format(category))
+            log.info("Working on category {}".format(category))
             if os.path.exists(os.path.join(archive_dir, category)) == False: # a directory for this category doesn't exist
                 log.debug("Making category directory.")
                 os.makedirs(os.path.join(archive_dir, category))
             page=1
             log.debug("Starting off on page {}".format(page))
-            log.info("Starting story url retrieval for category {}".format(category))
+            log.info("Starting story url retrieval")
             running=True
             while running:
                 url = '{0}{1}{2}{3}'.format(base_url, 'c/', category+'/', str(page)+'-page/')
@@ -84,24 +84,33 @@ All stories are stored in epub form; re-running this script will update any prev
                 log.debug("Status code for {} is {}".format(url, r.status_code))
                 if r.status_code==200: # The category page url is valid; extract valid story urls
                     log.debug("Status code valid, passing url to fanficfare for story url extraction")
-                    u = subprocess.check_output(['fanficfare', '-n', url]) # get a list of valid storyurls from the category page
+                    u = subprocess.check_output(['fanficfare', '-n', url], stdout=None) # get a list of valid storyurls from the category page
+                    log.debug("Finished fanficfare extraction")
                     u = u.split('\n') # split output by lines
                     if u[-1] == '': del(u[-1])
+                    log.debug("{} total urls extracted from page by fanficfare".format(len(u))
                     u_t = []
                     # associate every url with the current category in a tuple, so later we can send the downloaded story to the right place
+                    log.debug("Starting url-to-category asociation loop")
                     for url in u:
                         t = url, category
                         u_t.append(t)
+                    log.debug("Finished creating an amalgamated url list")
                     url_list.extend(u_t) # add our urls to the main list of ones to be downloaded
+                    log.debug("{} URLs added to the deque".format(len(u_t)))
                     page+=1
+                    log.debug("Working on page {}".format(page))
                 elif r.status_code==301: # no more pages; literotica is trying to redirect us back to the last valid page
                     page=page-1 # the last increment got us the 301
-                    click.echo("Finished retrieving urls for category {0}; {1} total pages.".format(category, str(page)))
+                    log.info("Finished retrieving urls for category {0}; {1} total pages.".format(category, str(page)))
                     running=False # end the category page retrieval loop
+        log.debug("Finished retrieving all URLs; setting flag so worker threads know it's safe to exit if the deque is empty")
         finished_retrieving_urls.set() # done collecting urls now; if threads notice that the deque is empty they can exit
 
         if zip_archive:
+            log.info("Zipping up the archive directory...")
             shutil.make_archive(zip_name, "zip", archive_dir)
+            log.info("Finished zipping")
     except KeyboardInterrupt:
         # We've got some threads to kill
         for t in threads:
