@@ -38,14 +38,15 @@ All stories are stored in epub form; re-running this script will update any prev
     
     # Setup logging
     log = logging.getLogger("larc")
+    log.setLevel(logging.DEBUG) # set the main logger to the lowest level so all messages get passed to all handlers that will take them
+    ch = logging.streamHandler() # console handler
+    # Set the accepted log level of the console handler only
     if verbosity == 'debug':
-        log.setLevel(logging.DEBUG)
+        ch.setLevel(logging.DEBUG)
     elif verbosity == 'warn':
-        log.setLevel(logging.WARN)
+        ch.setLevel(logging.WARN)
     else: # no specific level requested; default to info
-        log.setLevel(logging.INFO)
-    ch = logging.streamHandler()
-    ch.setLevel(logging.debug)
+        ch.setLevel(logging.INFO)
 
     click.echo("Starting literotica archival...")
     try: # huge try / except block to handle KeyboardInterrupt
