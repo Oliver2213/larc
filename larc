@@ -66,7 +66,7 @@ All stories are stored in epub form; re-running this script will update any prev
         threads = []
         log.debug("Starting download worker threads")
         for r in range(thread_count):
-            t = threading.Thread(target=download_worker, args=(url_list, archive_dir, finished_retrieving_urls,))
+            t = threading.Thread(target=download_worker, args=(url_list, archive_dir, finished_retrieving_urls, log, stop_now,))
             t.start()
             threads.append(t)
         log.debug("Finished starting worker threads")
@@ -126,7 +126,7 @@ All stories are stored in epub form; re-running this script will update any prev
                 # continue
             # t.join()
 
-def download_worker(d, archive_dir, finished_retrieving_urls):
+def download_worker(d, archive_dir, finished_retrieving_urls, log, stop_now):
     """Worker function that pops and downloads a url off the provided deque."""
     log.debug("Worker started")
     while not stop_now.isSet(): # As long as the stop_now flag isn't set, we can loop
