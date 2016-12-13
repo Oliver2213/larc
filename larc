@@ -39,7 +39,7 @@ All stories are stored in epub form; re-running this script will update any prev
     # Setup logging
     log = logging.getLogger("larc")
     log.setLevel(logging.DEBUG) # set the main logger to the lowest level so all messages get passed to all handlers that will take them
-    ch = logging.streamHandler() # console handler
+    ch = logging.StreamHandler() # console handler
     # Set the accepted log level of the console handler only
     if verbosity == 'debug':
         ch.setLevel(logging.DEBUG)
