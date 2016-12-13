@@ -40,6 +40,9 @@ All stories are stored in epub form; re-running this script will update any prev
     log = logging.getLogger("larc")
     log.setLevel(logging.DEBUG) # set the main logger to the lowest level so all messages get passed to all handlers that will take them
     ch = logging.StreamHandler() # console handler
+    ch_f = logging.Formatter('[%(name)s] (%(threadName)s) - %(levelname)s: %(message)s') # console formatter
+    ch.setFormatter(ch_f)
+    log.addHandler(ch)
     # Set the accepted log level of the console handler only
     if verbosity == 'debug':
         ch.setLevel(logging.DEBUG)
@@ -60,7 +63,7 @@ All stories are stored in epub form; re-running this script will update any prev
         log.info("Starting {} download worker threads.".format(thread_count))
         finished_retrieving_urls = threading.Event()
         threads = []
-        Llog.debug("Starting download worker threads")
+        log.debug("Starting download worker threads")
         for r in range(thread_count):
             t = threading.Thread(target=download_worker, args=(url_list, archive_dir, finished_retrieving_urls,))
             t.start()
