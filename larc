@@ -62,6 +62,7 @@ All stories are stored in epub form; re-running this script will update any prev
         url_list=deque()
         log.info("Starting {} download worker threads.".format(thread_count))
         finished_retrieving_urls = threading.Event()
+        stop_now = threading.Event()
         threads = []
         log.debug("Starting download worker threads")
         for r in range(thread_count):
@@ -88,7 +89,7 @@ All stories are stored in epub form; re-running this script will update any prev
                 log.debug("Status code for {} is {}".format(url, r.status_code))
                 if r.status_code==200: # The category page url is valid; extract valid story urls
                     log.debug("Status code valid, passing url to fanficfare for story url extraction")
-                    u = subprocess.check_output(['fanficfare', '-n', url], stdout=None) # get a list of valid storyurls from the category page
+                    u = subprocess.check_output(['fanficfare', '-n', url]) # get a list of valid storyurls from the category page
                     log.debug("Finished fanficfare extraction")
                     u = u.split('\n') # split output by lines
                     if u[-1] == '': del(u[-1])
@@ -117,18 +118,20 @@ All stories are stored in epub form; re-running this script will update any prev
             log.info("Finished zipping")
     except KeyboardInterrupt:
         # We've got some threads to kill
-        current_thread = threading.currentThread()
-        for t in threading.enumerate():
-            if t is current_thread:
-                continue
-            t.join()
+        # The idea here is to set one flag, and all worker threads will notice it in their while loops and stop, then return
+        stop_now.set()
+        # current_thread = threading.currentThread()
+        # for t in threading.enumerate():
+            # if t is current_thread:
+                # continue
+            # t.join()
 
 def download_worker(d, archive_dir, finished_retrieving_urls):
     """Worker function that pops and downloads a url off the provided deque."""
-    while True:
+    while not stop_now.isSet(): # As long as the stop_now flag isn't set, we can loop
         try:
             u = d.pop()
-            subprocess.call(['fanficfare', '--update-epub', u[0]], cwd=os.path.join(archive_dir, u[1]))
+            subprocess.call(['fanficfare', '--update-epub', u[0]], cwd=os.path.join(archive_dir, u[1]), stdout=None)
         except IndexError: # No more items in the deque to pop
             if finished_retrieving_urls.isSet(): # if we're done getting urls
                 break # if the deque is empty and we have all the urls our job is done
