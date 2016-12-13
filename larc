@@ -20,14 +20,14 @@ import requests
 @click.command()
 @click.option('--archive-dir', '--dir', 'archive_dir', default='./literotica', help="Directory to store archive files", type=click.Path(exists=True, writable=True))
 @click.option('--base-url', default='https://literotica.com/', help='Base URL for literotica')
-@click.option('--quiet', '-q', 'verbosity', flag_value='warn', help='Be quiet unless there's a warning or error')
+@click.option('--quiet', '-q', 'verbosity', flag_value='warn', help='Be quiet unless there\'s a warning or error')
 @click.option('--thread-count', default=2, show_default=True, help="The number of download worker threads")
-@click.option('--verbose', '-v', 'verbosity', flag_value='debug', help='Be very descriptive about what's happening')
+@click.option('--verbose', '-v', 'verbosity', flag_value='debug', help='Be very descriptive about what\'s happening')
 @click.option('-z', '--zip-archive', default=False, help='Zip the archive directory after downloading stories')
 @click.option('-zn', '--zip-name', default='literotica_archive_'+str(datetime.datetime.now()), help='Filename for the zip archive without the .zip extention')
 
 @click.argument('category-file', type=click.Path(file_okay=True, exists=True, readable=True))
-def literoticarchiver(archive_dir, base_url, category_file, thread_count, zip_archive, zip_name):
+def literoticarchiver(archive_dir, base_url, category_file, thread_count, verbose, zip_archive, zip_name):
     """ Larc - A script to archive the given literotica categories.
 
 Category_file is a path to a file that contains the categories you want archived, one per line.
@@ -89,7 +89,7 @@ All stories are stored in epub form; re-running this script will update any prev
                     log.debug("Finished fanficfare extraction")
                     u = u.split('\n') # split output by lines
                     if u[-1] == '': del(u[-1])
-                    log.debug("{} total urls extracted from page by fanficfare".format(len(u))
+                    log.debug("{} total urls extracted from page by fanficfare".format(len(u)))
                     u_t = []
                     # associate every url with the current category in a tuple, so later we can send the downloaded story to the right place
                     log.debug("Starting url-to-category asociation loop")
