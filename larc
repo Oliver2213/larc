@@ -128,6 +128,7 @@ All stories are stored in epub form; re-running this script will update any prev
 
 def download_worker(d, archive_dir, finished_retrieving_urls):
     """Worker function that pops and downloads a url off the provided deque."""
+    log.debug("Worker started")
     while not stop_now.isSet(): # As long as the stop_now flag isn't set, we can loop
         try:
             u = d.pop()
@@ -135,6 +136,7 @@ def download_worker(d, archive_dir, finished_retrieving_urls):
         except IndexError: # No more items in the deque to pop
             if finished_retrieving_urls.isSet(): # if we're done getting urls
                 break # if the deque is empty and we have all the urls our job is done
+    log.debug("Exiting")
     return
 
 
