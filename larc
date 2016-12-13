@@ -5,6 +5,7 @@
 
 from collections import deque
 import datetime
+import logging
 import os
 import shutil
 import subprocess
@@ -15,16 +16,19 @@ import click
 import requests
 
 
+
 @click.command()
 @click.option('--archive-dir', '--dir', 'archive_dir', default='./literotica', help="Directory to store archive files", type=click.Path(exists=True, writable=True))
 @click.option('--base-url', default='https://literotica.com/', help='Base URL for literotica')
+@click.option('--quiet', '-q', 'verbosity', flag_value='warn', help='Be quiet unless there's a warning or error')
 @click.option('--thread-count', default=2, show_default=True, help="The number of download worker threads")
+@click.option('--verbose', '-v', 'verbosity', flag_value='debug', help='Be very descriptive about what's happening')
 @click.option('-z', '--zip-archive', default=False, help='Zip the archive directory after downloading stories')
 @click.option('-zn', '--zip-name', default='literotica_archive_'+str(datetime.datetime.now()), help='Filename for the zip archive without the .zip extention')
 
 @click.argument('category-file', type=click.Path(file_okay=True, exists=True, readable=True))
 def literoticarchiver(archive_dir, base_url, category_file, thread_count, zip_archive, zip_name):
-    """ Literoticarchiver - A script to archive the given literotica categories.
+    """ Larc - A script to archive the given literotica categories.
 
 Category_file is a path to a file that contains the categories you want archived, one per line.
 
@@ -32,36 +36,54 @@ A directory for each category will be created.
 
 All stories are stored in epub form; re-running this script will update any previously stored stories and download new ones."""
     
+    # Setup logging
+    log = logging.getLogger("larc")
+    if verbosity == 'debug':
+        log.setLevel(logging.DEBUG)
+    elif verbosity == 'warn':
+        log.setLevel(logging.WARN)
+    else: # no specific level requested; default to info
+        log.setLevel(logging.INFO)
+    ch = logging.streamHandler()
+    ch.setLevel(logging.debug)
+
     click.echo("Starting literotica archival...")
     try: # huge try / except block to handle KeyboardInterrupt
         with open(category_file, 'r') as f:
+            log.debug("Category file {} opened".format(category_file))
             l = f.read().split('\n')
+            log.debug("Category file split by lines.")
         if l[-1]=='': del(l[-1])
-        click.echo("Category file processed.")
+        log.info("Category file processed.")
         url_list=deque()
-        click.echo("Starting {} download worker threads.".format(thread_count))
+        log.info("Starting {} download worker threads.".format(thread_count))
         finished_retrieving_urls = threading.Event()
         threads = []
+        Llog.debug("Starting download worker threads")
         for r in range(thread_count):
             t = threading.Thread(target=download_worker, args=(url_list, archive_dir, finished_retrieving_urls,))
             t.start()
             threads.append(t)
+        log.debug("Finished starting worker threads")
+        log.debug("Starting category processing; {} total categories".format(len(l)))
         for category in l:
             category = unicode(category)
             category.strip()
-            click.echo("Processing category %s" % category)
+            log.info("Processing category {}".format(category))
             if os.path.exists(os.path.join(archive_dir, category)) == False: # a directory for this category doesn't exist
-                click.echo("Making category directory.")
+                log.debug("Making category directory.")
                 os.makedirs(os.path.join(archive_dir, category))
             page=1
-            click.echo("Starting story url retrieval for category %s" % category)
+            log.debug("Starting off on page {}".format(page))
+            log.info("Starting story url retrieval for category {}".format(category))
             running=True
             while running:
                 url = '{0}{1}{2}{3}'.format(base_url, 'c/', category+'/', str(page)+'-page/')
-                click.echo("Using URL %s" % (url))
+                log.debug("Using URL {}".format(url))
                 r=requests.head(url) 
-                click.echo("Status code is %s." %(r.status_code))
+                log.debug("Status code for {} is {}".format(url, r.status_code))
                 if r.status_code==200: # The category page url is valid; extract valid story urls
+                    log.debug("Status code valid, passing url to fanficfare for story url extraction")
                     u = subprocess.check_output(['fanficfare', '-n', url]) # get a list of valid storyurls from the category page
                     u = u.split('\n') # split output by lines
                     if u[-1] == '': del(u[-1])
