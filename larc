@@ -27,7 +27,7 @@ import requests
 @click.option('-zn', '--zip-name', default='literotica_archive_'+str(datetime.datetime.now()), help='Filename for the zip archive without the .zip extention')
 
 @click.argument('category-file', type=click.Path(file_okay=True, exists=True, readable=True))
-def literoticarchiver(archive_dir, base_url, category_file, thread_count, verbose, zip_archive, zip_name):
+def literoticarchiver(archive_dir, base_url, category_file, thread_count, verbosity, zip_archive, zip_name):
     """ Larc - A script to archive the given literotica categories.
 
 Category_file is a path to a file that contains the categories you want archived, one per line.
@@ -114,8 +114,12 @@ All stories are stored in epub form; re-running this script will update any prev
             log.info("Finished zipping")
     except KeyboardInterrupt:
         # We've got some threads to kill
-        for t in threads:
+        current_thread = threading.currentThread()
+        for t in threading.enumerate():
+            if t is current_thread:
+                continue
             t.join()
+
 def download_worker(d, archive_dir, finished_retrieving_urls):
     """Worker function that pops and downloads a url off the provided deque."""
     while True:
