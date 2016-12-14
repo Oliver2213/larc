@@ -79,11 +79,18 @@ All stories are stored in epub form; re-running this script will update any prev
     click.echo("Starting literotica archival...")
     try: # huge try / except block to handle KeyboardInterrupt
         with open(category_file, 'r') as f:
-            log.debug("Category file {} opened".format(category_file))
+            log.debug("Category file {} opened".format(click.format_filename(category_file)))
             l = f.read().split('\n')
             log.debug("Category file split by lines.")
-        if l[-1]=='': del(l[-1])
-        log.info("Category file processed.")
+        log.debug("Removing comments and blank lines from the list of categories")
+        l_len = len(l)
+        for line in l:
+            if line.startswith('#'):
+                l.remove(line)
+            elif line == '':
+                l.remove(line)
+        log.debug("{} comments and blank lines removed from categories list".format(l_len-len(l)))
+        log.debug("Category file processed.")
         url_list=deque()
         log.info("Starting {} download worker threads.".format(thread_count))
         finished_retrieving_urls = threading.Event()
