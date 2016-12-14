@@ -88,15 +88,13 @@ All stories are stored in epub form; re-running this script will update any prev
             while running:
                 url = '{0}{1}{2}{3}'.format(base_url, 'c/', category+'/', str(page)+'-page/')
                 log.debug("Using URL {}".format(url))
-                r=requests.head(url) 
+                r=requests.get(url) 
                 log.debug("Status code for {} is {}".format(url, r.status_code))
                 if r.status_code==200: # The category page url is valid; extract valid story urls
-                    log.debug("Status code valid, passing url to fanficfare for story url extraction")
-                    u = subprocess.check_output(['fanficfare', '-n', url]) # get a list of valid storyurls from the category page
-                    log.debug("Finished fanficfare extraction")
-                    u = u.split('\n') # split output by lines
-                    if u[-1] == '': del(u[-1])
-                    log.debug("{} total urls extracted from page by fanficfare".format(len(u)))
+                    log.debug("Status code valid, passing url to extract_storyurls")
+                    u = extract_storyurls(r.content)
+                    log.debug("Finished storyurl extraction")
+                    log.debug("{} total urls extracted from page".format(len(u)))
                     u_t = []
                     # associate every url with the current category in a tuple, so later we can send the downloaded story to the right place
                     log.debug("Starting url-to-category asociation loop")
@@ -138,6 +136,7 @@ def download_worker(d, archive_dir, finished_retrieving_urls, log, stop_now):
             subprocess.call(['fanficfare', '--update-epub', u[0]], cwd=os.path.join(archive_dir, u[1]), stdout=None)
         except IndexError: # No more items in the deque to pop
             if finished_retrieving_urls.isSet(): # if we're done getting urls
+                log.debug("Deque is empty and we're done retrieving URLs")
                 break # if the deque is empty and we have all the urls our job is done
     log.debug("Exiting")
     return
