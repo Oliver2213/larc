@@ -19,6 +19,7 @@ import requests
 
 # Constants:
 le_storyurl_regexp = re.compile(r"""^https://www\.literotica\.com/s/.+""")
+le_categoryurl_regexp = re.compile(r"""https://www\.literotica\.com/c/.+""")
 
 @click.command()
 @click.option('--archive-dir', '--dir', 'archive_dir', default='./literotica', help="Directory to store archive files", type=click.Path(exists=True, writable=True))
@@ -153,6 +154,17 @@ def extract_storyurls(p):
         l_t.append(i['href'])
     return l_t
 
+def extract_categoryurls(p):
+    """Given a page from Literotica, extract all categories from it
+    The past object must be a string.
+    returns: a list of category names
+    """
+    s = BeautifulSoup(p)
+    l = s.find_all(href=le_categoryurl_regexp)
+    l_t = []
+    for i in l:
+        l_t.append(l['href'].split('/')[-1]) # split up the category url by /, and add the last component to l_t
+    return l_t
 
 if __name__ == '__main__':
     literoticarchiver()
