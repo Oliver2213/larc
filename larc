@@ -7,15 +7,18 @@ from collections import deque
 import datetime
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
 import threading
 
 import click
+from bs4 import BeautifulSoup
 import requests
 
-
+# Constants:
+le_storyurl_regexp = re.compile(r"""^https://www\.literotica\.com/s/.+""")
 
 @click.command()
 @click.option('--archive-dir', '--dir', 'archive_dir', default='./literotica', help="Directory to store archive files", type=click.Path(exists=True, writable=True))
@@ -138,6 +141,18 @@ def download_worker(d, archive_dir, finished_retrieving_urls, log, stop_now):
                 break # if the deque is empty and we have all the urls our job is done
     log.debug("Exiting")
     return
+
+def extract_storyurls(p):
+    """Given a page from literotica, extract all of the storyurls present
+    The passed object must be a string
+    returns: a list of urls
+    """
+    s = BeautifulSoup(p)
+    l = s.find_all(href=le_storyurl_regexp) # find all tags that have href as a keyword that match our literotica storyurl regexp
+    l_t = []
+    for i in l: # iterate through the list of matching urls
+        l_t.append(i['href'])
+    return l_t
 
 
 if __name__ == '__main__':
