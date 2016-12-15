@@ -44,6 +44,12 @@ def output_categories(ctx, param, val):
 @click.command()
 @click.option('--archive-dir', '--dir', 'archive_dir', default='./literotica', help="Directory to store archive files", type=click.Path(exists=True, writable=True))
 @click.option('--base-url', default='https://literotica.com/', help='Base URL for literotica')
+@click.option('--download-categories', '--categories', 'mode', flag_value='categories', default=True, help="""Download all stories in all of the categories specified in category_file.
+This is expensive as far as CPU and bandwidth (for you and the literotica servers), so please only use this once to initially get all stories in all categories you want; afterwards use the '--download-new' option.""")
+@click.option('--download-new', '--new', '-n', 'mode', flag_value='new', help="""Parse Literotica's new stories and download the ones which are in a category you have set in category_file.
+For example, if your category file only has the category 'science-fiction-fantasy', only new stories of that category will be downloaded.
+
+You can use this to progressively keep your archive up-to-date with whatever categories you are interested in, while not stressing the Literotica servers by downloading each and every category page.""")
 @click.option('--dry-run', '-d', default=False, is_flag=True, help='Collect URLs from categories specified in category_file, but do not start download worker threads')
 @click.option('--output-categories', '-oc', callback=output_categories, expose_value=False, is_eager=True, type=click.Path(file_okay=True, writable=True), help="Output all Literotica categories to the given file. Each category name will be commented with a #; to choose which ones you want archived when providing this file as category_file, just remove the number (#) from in front of each name. Leaving the space there or taking it out doesn't matter.")
 @click.option('--quiet', '-q', 'verbosity', flag_value='warn', help='Be quiet unless there\'s a warning or error')
@@ -53,7 +59,7 @@ def output_categories(ctx, param, val):
 @click.option('-zn', '--zip-name', default='literotica_archive_'+str(datetime.datetime.now()), help='Filename for the zip archive without the .zip extention')
 
 @click.argument('category-file', type=click.Path(file_okay=True, exists=True, readable=True))
-def literoticarchiver(archive_dir, base_url, category_file, thread_count, verbosity, zip_archive, zip_name, dry_run):
+def literoticarchiver(archive_dir, base_url, category_file, thread_count, verbosity, zip_archive, zip_name, dry_run, mode):
     """ Larc - A script to archive the given literotica categories.
 
 Category_file is a path to a file that contains the categories you want archived, one per line.
@@ -63,6 +69,7 @@ A directory for each category will be created.
 All stories are stored in epub form; re-running this script will update any previously stored stories and download new ones."""
     
     # Setup logging
+    global log
     log = logging.getLogger("larc")
     log.setLevel(logging.DEBUG) # set the main logger to the lowest level so all messages get passed to all handlers that will take them
     ch = logging.StreamHandler() # console handler
@@ -106,44 +113,65 @@ All stories are stored in epub form; re-running this script will update any prev
                 t.start()
                 threads.append(t)
             log.debug("Finished starting worker threads")
-        log.debug("Starting category processing; {} total categories".format(len(l)))
-        for category in l:
-            category.strip()
-            log.info("Working on category {}".format(category))
-            if os.path.exists(os.path.join(archive_dir, category)) == False: # a directory for this category doesn't exist
-                log.debug("Making category directory.")
-                os.makedirs(os.path.join(archive_dir, category))
+        create_category_dirs(archive_dir, l) # Create any category directories that don't already exist
+
+        if mode == 'categories':
+            log.debug("Starting category processing; {} total categories".format(len(l)))
+            for category in l:
+                log.info("Working on category {}".format(category))
+                page=1
+                log.debug("Starting off on page {}".format(page))
+                log.info("Starting story url retrieval")
+                running=True
+                while running:
+                    url = '{0}{1}{2}{3}'.format(base_url, 'c/', category+'/', str(page)+'-page/')
+                    log.debug("Using URL {}".format(url))
+                    r=requests.get(url, allow_redirects=False)
+                    log.debug("Status code for {} is {}".format(url, r.status_code))
+                    if r.status_code==200: # The category page url is valid; extract valid story urls
+                        log.debug("Status code valid, passing url to extract_storyurls")
+                        u = extract_storyurls(r.content)
+                        log.debug("Finished storyurl extraction")
+                        log.debug("{} total urls extracted from page".format(len(u)))
+                        u_t = []
+                        # associate every url with the current category in a tuple, so later we can send the downloaded story to the right place
+                        log.debug("Starting url-to-category asociation loop")
+                        for url in u:
+                            t = url, category
+                            u_t.append(t)
+                        log.debug("Finished creating an amalgamated url list")
+                        url_list.extend(u_t) # add our urls to the main list of ones to be downloaded
+                        log.debug("{} URLs added to the deque".format(len(u_t)))
+                        urls_total += len(u_t)
+                        page+=1
+                        log.debug("Working on page {}".format(page))
+                    elif r.status_code==301: # no more pages; literotica is trying to redirect us back to the last valid page
+                        page=page-1 # the last increment got us the 301
+                        log.info("Finished retrieving urls for category {0}; {1} total pages.".format(category, str(page)))
+                        running=False # end the category page retrieval loop
+            log.info("Finished retrieving URLs; {} retrieved in all.".format(urls_total))
+        elif mode == 'new':
+            log.info("'Starting new story processing; {} total categories".format(len(l)))
+            log.debug("Starting off on page 1")
             page=1
-            log.debug("Starting off on page {}".format(page))
-            log.info("Starting story url retrieval")
-            running=True
-            while running:
-                url = '{0}{1}{2}{3}'.format(base_url, 'c/', category+'/', str(page)+'-page/')
-                log.debug("Using URL {}".format(url))
-                r=requests.get(url, allow_redirects=False)
-                log.debug("Status code for {} is {}".format(url, r.status_code))
-                if r.status_code==200: # The category page url is valid; extract valid story urls
-                    log.debug("Status code valid, passing url to extract_storyurls")
-                    u = extract_storyurls(r.content)
-                    log.debug("Finished storyurl extraction")
-                    log.debug("{} total urls extracted from page".format(len(u)))
-                    u_t = []
-                    # associate every url with the current category in a tuple, so later we can send the downloaded story to the right place
-                    log.debug("Starting url-to-category asociation loop")
-                    for url in u:
-                        t = url, category
-                        u_t.append(t)
-                    log.debug("Finished creating an amalgamated url list")
-                    url_list.extend(u_t) # add our urls to the main list of ones to be downloaded
-                    log.debug("{} URLs added to the deque".format(len(u_t)))
-                    urls_total += len(u_t)
+            running = True
+            while running == True:
+                url = "https://www.literotica.com/stories/new_submissions.php?type=story&page="+str(page)
+                r = requests.get(url, allow_redirects=False)
+                if r.status_code == 200:
+                    n = parse_new_stories(r.content)
+                    url_list.extend(n)
+                    log.debug("{} URLs added to the deque".format(len(n)))
+                    total_urls += len(n)
                     page+=1
                     log.debug("Working on page {}".format(page))
                 elif r.status_code==301: # no more pages; literotica is trying to redirect us back to the last valid page
                     page=page-1 # the last increment got us the 301
-                    log.info("Finished retrieving urls for category {0}; {1} total pages.".format(category, str(page)))
-                    running=False # end the category page retrieval loop
-        log.info("Finished retrieving URLs; {} retrieved in all.".format(urls_total))
+                    log.info("Finished retrieving urls for new stories; {} total pages.".format(str(page)))
+                    running=False # end the new stories page retrieval loop
+            log.info("Finished retrieving URLs; {} retrieved in all.".format(urls_total))
+
+
         if not dry_run:
             log.debug("Setting flag so worker threads know it's safe to exit if the deque is empty")
             finished_retrieving_urls.set() # done collecting urls now; if threads notice that the deque is empty they can exit
@@ -204,6 +232,32 @@ def is_comment(line):
         return True # provided string is a comment
     else:
         return False
+
+def create_category_dirs(archive_dir, c_list):
+    """Given a list of category names, create a directory for each if it doesn't already exist at archive_dir"""
+    for c in c_list:
+        if os.path.exists(os.path.join(archive_dir, c)) == False: # a directory for this category doesn't exist
+            log.debug("A directory for category {} doesn't exist; making one".format(c))
+            os.makedirs(os.path.join(archive_dir, category))
+
+def parse_new_stories(p):
+    """Given Literotica's new stories page as a HTML string, return a list of (storyurl, category) tuples
+    """
+    s = BeautifulSoup(p)
+    # This is a really rough algorithm that associates a storyurl with a category name
+    # So rough,  in fact, that it breaks if there are more storyurls than categories, or vice versa
+    storyurls = s.find_all(class_='p-48y')
+    storyurls[:] = [s['href'] for s in storyurls] # we want links, not tags
+    categoryurls = s.find_all(class_='z-5i')
+    categories[:] = [c['href'].split('/')[-1] for c in categories] # category names, not links; not tags
+    if len(storyurls) == len(categories): # we have as many stories as we do categories
+        res = []
+        for url, cat_name in zip(storyurls, categories):
+            res.append((url, catname,))
+        return res
+    else: # the number of storyurls and categories parsed doesn't match
+        log.critical("Error parsing new stories page; {0} storyurls, and {1} category urls parsed".format(len(storyurls), len(categories)))
+        sys.exit(1)
 
 if __name__ == '__main__':
     literoticarchiver()
