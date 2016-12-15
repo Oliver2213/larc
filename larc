@@ -248,7 +248,7 @@ def parse_new_stories(p):
     # So rough,  in fact, that it breaks if there are more storyurls than categories, or vice versa
     storyurls = s.find_all(class_='p-48y')
     storyurls[:] = [s['href'] for s in storyurls] # we want links, not tags
-    categoryurls = s.find_all(class_='z-5i')
+    categories = s.find_all(class_='z-5i')
     categories[:] = [c['href'].split('/')[-1] for c in categories] # category names, not links; not tags
     if len(storyurls) == len(categories): # we have as many stories as we do categories
         res = []
