@@ -88,11 +88,8 @@ All stories are stored in epub form; re-running this script will update any prev
             log.debug("Category file split by lines.")
         log.debug("Removing comments and blank lines from the list of categories")
         l_len = len(l)
-        for line in l:
-            if line.lstrip().startswith('#'):
-                l.remove(line)
-            elif line == '' or line == '\n':
-                l.remove(line)
+        l[:] = [line for line in l if is_comment(line)==False]
+        l[:] = [line.strip() for line in l]
         log.debug("{} comments and blank lines removed from categories list".format(l_len-len(l)))
         log.debug("Category file processed.")
         url_list=deque()
@@ -109,7 +106,6 @@ All stories are stored in epub form; re-running this script will update any prev
             log.debug("Finished starting worker threads")
         log.debug("Starting category processing; {} total categories".format(len(l)))
         for category in l:
-            category = unicode(category)
             category.strip()
             log.info("Working on category {}".format(category))
             if os.path.exists(os.path.join(archive_dir, category)) == False: # a directory for this category doesn't exist
@@ -197,6 +193,13 @@ def extract_categoryurls(p):
         l_t.append(i['href'].split('/')[-1]) # split up the category url by /, and add the last component to l_t
     return l_t
 
+def is_comment(line):
+    """Return true if the provided line is a comment (that is, if it starts with a number, is an empty string, or just a newline)
+    """
+    if line.lstrip().startswith('#') or line == '' or line == '\n':
+        return True # provided string is a comment
+    else:
+        return False
 
 if __name__ == '__main__':
     literoticarchiver()
