@@ -165,7 +165,7 @@ def download_worker(d, archive_dir, finished_retrieving_urls, log, stop_now):
         try:
             u = d.pop()
             subprocess.call(['fanficfare', '--update-epub', u[0]], cwd=os.path.join(archive_dir, u[1]), stdout=None)
-        urls_processed += 1
+            urls_processed += 1
         except IndexError: # No more items in the deque to pop
             if finished_retrieving_urls.isSet(): # if we're done getting urls
                 log.debug("Deque is empty and we're done retrieving URLs")
