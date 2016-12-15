@@ -143,7 +143,7 @@ All stories are stored in epub form; re-running this script will update any prev
                     page=page-1 # the last increment got us the 301
                     log.info("Finished retrieving urls for category {0}; {1} total pages.".format(category, str(page)))
                     running=False # end the category page retrieval loop
-        log.debug("Finished retrieving URLs; {} retrieved in all.".format(len(urls_total)))
+        log.info("Finished retrieving URLs; {} retrieved in all.".format(urls_total))
         if not dry_run:
             log.debug("Setting flag so worker threads know it's safe to exit if the deque is empty")
             finished_retrieving_urls.set() # done collecting urls now; if threads notice that the deque is empty they can exit
