@@ -44,6 +44,7 @@ def output_categories(ctx, param, val):
 @click.command()
 @click.option('--archive-dir', '--dir', 'archive_dir', default='./literotica', help="Directory to store archive files", type=click.Path(exists=True, writable=True))
 @click.option('--base-url', default='https://literotica.com/', help='Base URL for literotica')
+@click.option('--dry-run', '-d', default=False, is_flag=True, help='Collect URLs from categories specified in category_file, but do not start download worker threads')
 @click.option('--output-categories', '-oc', callback=output_categories, expose_value=False, is_eager=True, type=click.Path(file_okay=True, writable=True), help="Output all Literotica categories to the given file. Each category name will be commented with a #; to choose which ones you want archived when providing this file as category_file, just remove the number (#) from in front of each name. Leaving the space there or taking it out doesn't matter.")
 @click.option('--quiet', '-q', 'verbosity', flag_value='warn', help='Be quiet unless there\'s a warning or error')
 @click.option('--thread-count', default=2, show_default=True, help="The number of download worker threads")
@@ -52,7 +53,7 @@ def output_categories(ctx, param, val):
 @click.option('-zn', '--zip-name', default='literotica_archive_'+str(datetime.datetime.now()), help='Filename for the zip archive without the .zip extention')
 
 @click.argument('category-file', type=click.Path(file_okay=True, exists=True, readable=True))
-def literoticarchiver(archive_dir, base_url, category_file, thread_count, verbosity, zip_archive, zip_name):
+def literoticarchiver(archive_dir, base_url, category_file, thread_count, verbosity, zip_archive, zip_name, dry_run):
     """ Larc - A script to archive the given literotica categories.
 
 Category_file is a path to a file that contains the categories you want archived, one per line.
@@ -76,7 +77,10 @@ All stories are stored in epub form; re-running this script will update any prev
     else: # no specific level requested; default to info
         ch.setLevel(logging.INFO)
 
-    click.echo("Starting literotica archival...")
+    if not dry_run:
+        log.info("Starting literotica archival...")
+    else:
+        log.info("Dry_run mode active; collecting URLs for categories, but not starting download worker threads")
     try: # huge try / except block to handle KeyboardInterrupt
         with open(category_file, 'r') as f:
             log.debug("Category file {} opened".format(click.format_filename(category_file)))
@@ -85,23 +89,24 @@ All stories are stored in epub form; re-running this script will update any prev
         log.debug("Removing comments and blank lines from the list of categories")
         l_len = len(l)
         for line in l:
-            if line.startswith('#'):
+            if line.lstrip().startswith('#'):
                 l.remove(line)
-            elif line == '':
+            elif line == '' or line == '\n':
                 l.remove(line)
         log.debug("{} comments and blank lines removed from categories list".format(l_len-len(l)))
         log.debug("Category file processed.")
         url_list=deque()
-        log.info("Starting {} download worker threads.".format(thread_count))
-        finished_retrieving_urls = threading.Event()
-        stop_now = threading.Event()
-        threads = []
-        log.debug("Starting download worker threads")
-        for r in range(thread_count):
-            t = threading.Thread(target=download_worker, args=(url_list, archive_dir, finished_retrieving_urls, log, stop_now,))
-            t.start()
-            threads.append(t)
-        log.debug("Finished starting worker threads")
+        if not dry_run:
+            log.info("Starting {} download worker threads.".format(thread_count))
+            finished_retrieving_urls = threading.Event()
+            stop_now = threading.Event()
+            threads = []
+            log.debug("Starting download worker threads")
+            for r in range(thread_count):
+                t = threading.Thread(target=download_worker, args=(url_list, archive_dir, finished_retrieving_urls, log, stop_now,))
+                t.start()
+                threads.append(t)
+            log.debug("Finished starting worker threads")
         log.debug("Starting category processing; {} total categories".format(len(l)))
         for category in l:
             category = unicode(category)
@@ -139,22 +144,20 @@ All stories are stored in epub form; re-running this script will update any prev
                     page=page-1 # the last increment got us the 301
                     log.info("Finished retrieving urls for category {0}; {1} total pages.".format(category, str(page)))
                     running=False # end the category page retrieval loop
-        log.debug("Finished retrieving all URLs; setting flag so worker threads know it's safe to exit if the deque is empty")
-        finished_retrieving_urls.set() # done collecting urls now; if threads notice that the deque is empty they can exit
+        log.debug("Finished retrieving all URLs")
+        if not dry_run:
+            log.debug("Setting flag so worker threads know it's safe to exit if the deque is empty")
+            finished_retrieving_urls.set() # done collecting urls now; if threads notice that the deque is empty they can exit
 
-        if zip_archive:
+        if zip_archive and not dry_run:
             log.info("Zipping up the archive directory...")
             shutil.make_archive(zip_name, "zip", archive_dir)
             log.info("Finished zipping")
     except KeyboardInterrupt:
-        # We've got some threads to kill
-        # The idea here is to set one flag, and all worker threads will notice it in their while loops and stop, then return
-        stop_now.set()
-        # current_thread = threading.currentThread()
-        # for t in threading.enumerate():
-            # if t is current_thread:
-                # continue
-            # t.join()
+        if not dry_run:
+            # We've got some threads to kill
+            # The idea here is to set one flag, and all worker threads will notice it in their while loops and stop, then return
+            stop_now.set()
 
 def download_worker(d, archive_dir, finished_retrieving_urls, log, stop_now):
     """Worker function that pops and downloads a url off the provided deque."""
