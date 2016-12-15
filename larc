@@ -118,7 +118,7 @@ All stories are stored in epub form; re-running this script will update any prev
             while running:
                 url = '{0}{1}{2}{3}'.format(base_url, 'c/', category+'/', str(page)+'-page/')
                 log.debug("Using URL {}".format(url))
-                r=requests.get(url) 
+                r=requests.get(url, allow_redirects=False)
                 log.debug("Status code for {} is {}".format(url, r.status_code))
                 if r.status_code==200: # The category page url is valid; extract valid story urls
                     log.debug("Status code valid, passing url to extract_storyurls")
