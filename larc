@@ -93,6 +93,8 @@ All stories are stored in epub form; re-running this script will update any prev
         log.debug("{} comments and blank lines removed from categories list".format(l_len-len(l)))
         log.debug("Category file processed.")
         url_list=deque()
+        urls_processed = 0
+        urls_total = 0
         if not dry_run:
             log.info("Starting {} download worker threads.".format(thread_count))
             finished_retrieving_urls = threading.Event()
@@ -134,13 +136,14 @@ All stories are stored in epub form; re-running this script will update any prev
                     log.debug("Finished creating an amalgamated url list")
                     url_list.extend(u_t) # add our urls to the main list of ones to be downloaded
                     log.debug("{} URLs added to the deque".format(len(u_t)))
+                    urls_total += len(u_t)
                     page+=1
                     log.debug("Working on page {}".format(page))
                 elif r.status_code==301: # no more pages; literotica is trying to redirect us back to the last valid page
                     page=page-1 # the last increment got us the 301
                     log.info("Finished retrieving urls for category {0}; {1} total pages.".format(category, str(page)))
                     running=False # end the category page retrieval loop
-        log.debug("Finished retrieving all URLs")
+        log.debug("Finished retrieving URLs; {} retrieved in all.".format(len(urls_total)))
         if not dry_run:
             log.debug("Setting flag so worker threads know it's safe to exit if the deque is empty")
             finished_retrieving_urls.set() # done collecting urls now; if threads notice that the deque is empty they can exit
@@ -162,6 +165,7 @@ def download_worker(d, archive_dir, finished_retrieving_urls, log, stop_now):
         try:
             u = d.pop()
             subprocess.call(['fanficfare', '--update-epub', u[0]], cwd=os.path.join(archive_dir, u[1]), stdout=None)
+        urls_processed += 1
         except IndexError: # No more items in the deque to pop
             if finished_retrieving_urls.isSet(): # if we're done getting urls
                 log.debug("Deque is empty and we're done retrieving URLs")
