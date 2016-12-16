@@ -4,6 +4,7 @@
 # Author: Blake Oliver <oliver22213@me.com>
 
 from collections import deque
+import copy
 import datetime
 import logging
 import os
@@ -18,8 +19,8 @@ from bs4 import BeautifulSoup
 import requests
 
 # Constants:
-le_storyurl_regexp = re.compile(r"""^https://www\.literotica\.com/s/.+""")
-le_categoryurl_regexp = re.compile(r"""https://www\.literotica\.com/c/.+""")
+le_story_url_regexp = re.compile(r"""^https://www\.literotica\.com/s/.+""")
+le_category_url_regexp = re.compile(r"""https://www\.literotica\.com/c/.+""")
 
 def output_categories(ctx, param, val):
     """Callback function for the '--output-categories' option; extracts all story categories from literotica and outputs  all category names, commented, to the given text file
@@ -29,7 +30,7 @@ def output_categories(ctx, param, val):
     click.echo("Writing all Literotica categories, commented, to {}.".format(click.format_filename(val)))
     stories_page = requests.get("https://www.literotica.com/stories")
     categories = extract_categoryurls(stories_page.content)
-8    click.echo("{} categories found; writing...".format(len(categories)))
+    click.echo("{} categories found; writing...".format(len(categories)))
     with click.open_file(val, 'w') as f:
         f.write("# Larc categories file\n")
         f.write("# Uncomment the categories you want larc to archive by removing the number in front of each; leaving the space doesn't matter\n")
@@ -154,18 +155,22 @@ All stories are stored in epub form; re-running this script will update any prev
             log.info("'Starting new story processing; {} total categories".format(len(l)))
             log.debug("Starting off on page 1")
             page=1
+            n_previous = None
             running = True
             while running == True:
+                if page> 1:
+                    log.debug("The page we're working on is greater than 1; saving the previous page's extracted story tuples")
+                    n_previous = n
                 url = "https://www.literotica.com/stories/new_submissions.php?type=story&page="+str(page)
                 r = requests.get(url, allow_redirects=False)
-                if r.status_code == 200:
-                    n = parse_new_stories(r.content)
+                n = parse_new_stories(r.content)
+                if n_previous is None or n != n_previous:
                     url_list.extend(n)
                     log.debug("{} URLs added to the deque".format(len(n)))
-                    total_urls += len(n)
+                    urls_total += len(n)
                     page+=1
                     log.debug("Working on page {}".format(page))
-                elif r.status_code==301: # no more pages; literotica is trying to redirect us back to the last valid page
+                elif n == n_previous: # no more pages; literotica just returns the last set of stories over and over
                     page=page-1 # the last increment got us the 301
                     log.info("Finished retrieving urls for new stories; {} total pages.".format(str(page)))
                     running=False # end the new stories page retrieval loop
@@ -207,7 +212,7 @@ def extract_storyurls(p):
     returns: a list of urls
     """
     s = BeautifulSoup(p)
-    l = s.find_all(href=le_storyurl_regexp) # find all tags that have href as a keyword that match our literotica storyurl regexp
+    l = s.find_all(href=le_story_url_regexp) # find all tags that have href as a keyword that match our literotica storyurl regexp
     l_t = []
     for i in l: # iterate through the list of matching urls
         l_t.append(i['href'])
@@ -219,7 +224,7 @@ def extract_categoryurls(p):
     returns: a list of category names
     """
     s = BeautifulSoup(p)
-    l = s.find_all(href=le_categoryurl_regexp)
+    l = s.find_all(href=le_category_url_regexp)
     l_t = []
     for i in l:
         l_t.append(i['href'].split('/')[-1]) # split up the category url by /, and add the last component to l_t
@@ -245,23 +250,25 @@ def parse_new_stories(p):
     """
     log.debug("Extracting storyurls and category names from 'new stories' page")
     s = BeautifulSoup(p)
+    s2 = copy.copy(s)
     # This is a really rough algorithm that associates a storyurl with a category name
     # So rough,  in fact, that it breaks if there are more storyurls than categories, or vice versa
-    storyurls = s.find_all(class_='p-48y')
-    log.debug("{} URLs extracted that match the story link class".format(len(storyurls)))
-    storyurls[:] = [s['href'] for s in storyurls] # we want links, not tags
-    log.debug("Now {} storyurls after extracting links from beautiful soup tag objects".format(len(storyurls)))
-    categories = s.find_all(class_='z-5i')
-    log.debug("{} category URLs that match the category class".format(len(categories)))
-    categories[:] = [c['href'].split('/')[-1] for c in categories] # category names, not links; not tags
-    log.debug("Now {} category names after extracting names from URLs".format(len(categories)))
-    if len(storyurls) == len(categories): # we have as many stories as we do categories
+    story_urls = s.find_all(class_='p-48y')
+    log.debug("{} URLs extracted that match the story link class".format(len(story_urls)))
+    story_urls[:] = [s['href'] for s in story_urls] # we want links, not tags
+    log.debug("Now {} storyurls after extracting links from beautiful soup tag objects".format(len(story_urls)))
+    # category_urls = s.find_all(class_='z-5i')
+    category_urls = s2.find_all(class_=s2.find_all(href=le_category_url_regexp, limit=1)[0]['class'])
+    log.debug("{} category URLs that match the category class".format(len(category_urls)))
+    category_names = [c['href'].split('/')[-1] for c in category_urls] # category names, not links; not tags
+    log.debug("Now {} category names after extracting names from URLs".format(len(category_names)))
+    if len(story_urls) == len(category_names): # we have as many stories as we do categories
         res = []
-        for url, cat_name in zip(storyurls, categories):
-            res.append((url, catname,))
+        for url, cat_name in zip(story_urls, category_names):
+            res.append((url, cat_name,))
         return res
     else: # the number of storyurls and categories parsed doesn't match
-        log.critical("Error parsing new stories page; {0} storyurls, and {1} category urls parsed".format(len(storyurls), len(categories)))
+        log.critical("Error parsing new stories page; {0} storyurls, and {1} category urls parsed".format(len(story_urls), len(category_names)))
         sys.exit(1)
 
 if __name__ == '__main__':
