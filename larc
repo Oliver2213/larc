@@ -243,13 +243,18 @@ def create_category_dirs(archive_dir, c_list):
 def parse_new_stories(p):
     """Given Literotica's new stories page as a HTML string, return a list of (storyurl, category) tuples
     """
+    log.debug("Extracting storyurls and category names from 'new stories' page")
     s = BeautifulSoup(p)
     # This is a really rough algorithm that associates a storyurl with a category name
     # So rough,  in fact, that it breaks if there are more storyurls than categories, or vice versa
     storyurls = s.find_all(class_='p-48y')
+    log.debug("{} URLs extracted that match the story link class".format(len(storyurls)))
     storyurls[:] = [s['href'] for s in storyurls] # we want links, not tags
+    log.debug("Now {} storyurls after extracting links from beautiful soup tag objects".format(len(storyurls)))
     categories = s.find_all(class_='z-5i')
+    log.debug("{} category URLs that match the category class".format(len(categories)))
     categories[:] = [c['href'].split('/')[-1] for c in categories] # category names, not links; not tags
+    log.debug("Now {} category names after extracting names from URLs".format(len(categories)))
     if len(storyurls) == len(categories): # we have as many stories as we do categories
         res = []
         for url, cat_name in zip(storyurls, categories):
