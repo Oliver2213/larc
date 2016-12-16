@@ -29,7 +29,7 @@ def output_categories(ctx, param, val):
     click.echo("Writing all Literotica categories, commented, to {}.".format(click.format_filename(val)))
     stories_page = requests.get("https://www.literotica.com/stories")
     categories = extract_categoryurls(stories_page.content)
-    click.echo("{} categories found; writing...".format(len(categories)))
+8    click.echo("{} categories found; writing...".format(len(categories)))
     with click.open_file(val, 'w') as f:
         f.write("# Larc categories file\n")
         f.write("# Uncomment the categories you want larc to archive by removing the number in front of each; leaving the space doesn't matter\n")
@@ -238,7 +238,7 @@ def create_category_dirs(archive_dir, c_list):
     for c in c_list:
         if os.path.exists(os.path.join(archive_dir, c)) == False: # a directory for this category doesn't exist
             log.debug("A directory for category {} doesn't exist; making one".format(c))
-            os.makedirs(os.path.join(archive_dir, category))
+            os.makedirs(os.path.join(archive_dir, c))
 
 def parse_new_stories(p):
     """Given Literotica's new stories page as a HTML string, return a list of (storyurl, category) tuples
