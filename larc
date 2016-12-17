@@ -92,13 +92,13 @@ All stories are stored in epub form; re-running this script will update any prev
     try: # huge try / except block to handle KeyboardInterrupt
         with open(category_file, 'r') as f:
             log.debug("Category file {} opened".format(click.format_filename(category_file)))
-            l = f.read().split('\n')
+            category_list = f.read().split('\n')
             log.debug("Category file split by lines.")
         log.debug("Removing comments and blank lines from the list of categories")
-        l_len = len(l)
-        l[:] = [line for line in l if is_comment(line)==False]
-        l[:] = [line.strip() for line in l]
-        log.debug("{} comments and blank lines removed from categories list".format(l_len-len(l)))
+        category_list_len = len(category_list)
+        category_list[:] = [line for line in category_list if is_comment(line)==False]
+        category_list[:] = [line.strip() for line in category_list]
+        log.debug("{} comments and blank lines removed from categories list".format(category_list_len-len(category_list)))
         log.debug("Category file processed.")
         url_list=deque()
         urls_processed = 0
@@ -114,11 +114,11 @@ All stories are stored in epub form; re-running this script will update any prev
                 t.start()
                 threads.append(t)
             log.debug("Finished starting worker threads")
-        create_category_dirs(archive_dir, l) # Create any category directories that don't already exist
+        create_category_dirs(archive_dir, category_list) # Create any category directories that don't already exist
 
         if mode == 'categories':
             log.debug("Starting category processing; {} total categories".format(len(l)))
-            for category in l:
+            for category in category_list:
                 log.info("Working on category {}".format(category))
                 page=1
                 log.debug("Starting off on page {}".format(page))
@@ -152,7 +152,7 @@ All stories are stored in epub form; re-running this script will update any prev
                         running=False # end the category page retrieval loop
             log.info("Finished retrieving URLs; {} retrieved in all.".format(urls_total))
         elif mode == 'new':
-            log.info("'Starting new story processing; {} total categories".format(len(l)))
+            log.info("'Starting new story processing; {} total categories".format(len(category_list)))
             log.debug("Starting off on page 1")
             page=1
             n_previous = None
@@ -165,6 +165,7 @@ All stories are stored in epub form; re-running this script will update any prev
                 r = requests.get(url, allow_redirects=False)
                 n = parse_new_stories(r.content)
                 if n_previous is None or n != n_previous:
+                    n[:] = [s_t for s_t in n if s_t[1] in category_list]
                     url_list.extend(n)
                     log.debug("{} URLs added to the deque".format(len(n)))
                     urls_total += len(n)
