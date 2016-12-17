@@ -257,8 +257,7 @@ def parse_new_stories(p):
     log.debug("{} URLs extracted that match the story link class".format(len(story_urls)))
     story_urls[:] = [s['href'] for s in story_urls] # we want links, not tags
     log.debug("Now {} storyurls after extracting links from beautiful soup tag objects".format(len(story_urls)))
-    # category_urls = s.find_all(class_='z-5i')
-    category_urls = s2.find_all(class_=s2.find_all(href=le_category_url_regexp, limit=1)[0]['class'])
+    category_urls = s2.find_all(class_='z-5i')
     log.debug("{} category URLs that match the category class".format(len(category_urls)))
     category_names = [c['href'].split('/')[-1] for c in category_urls] # category names, not links; not tags
     log.debug("Now {} category names after extracting names from URLs".format(len(category_names)))
