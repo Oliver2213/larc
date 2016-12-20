@@ -155,24 +155,26 @@ All stories are stored in epub form; re-running this script will update any prev
             log.info("'Starting new story processing; {} total categories".format(len(category_list)))
             log.debug("Starting off on page 1")
             page=1
-            n_previous = None
+            new_processed = []
+            new_unprocessed_previous = None
             running = True
             while running == True:
-                if page> 1:
-                    log.debug("The page we're working on is greater than 1; saving the previous page's extracted story tuples")
-                    n_previous = n
                 url = "https://www.literotica.com/stories/new_submissions.php?type=story&page="+str(page)
                 r = requests.get(url, allow_redirects=False)
-                n = parse_new_stories(r.content)
-                if n_previous is None or n != n_previous:
-                    n[:] = [s_t for s_t in n if s_t[1] in category_list]
-                    url_list.extend(n)
-                    log.debug("{} URLs added to the deque".format(len(n)))
-                    urls_total += len(n)
+                # We have new_unprocessed, new_processed, and new_unprocessed_previous lists because Literotica will continuously return the last page of results if the 'page' arg is out of the valid range
+                # new_unprocessed and new_unprocessed_previous exist so we can compare the returned storytuples for the actual page
+                # new_processed is the result of removing the storytuples who's category is not in category_file
+                new_unprocessed = parse_new_stories(r.content)
+                if new_unprocessed_previous is None or new_unprocessed_previous != new_unprocessed: # if we don't have the previous unprocessed storytuples, or the current unprocessed storytuples are not equal to the previously unprocessed ones
+                    new_processed[:] = [s_t for s_t in new_unprocessed if s_t[1] in category_list]
+                    url_list.extend(new_processed)
+                    log.debug("{} storytuples that match allowed categories added to the deque".format(len(new_processed)))
+                    urls_total += len(new_processed)
+                    new_unprocessed_previous = new_unprocessed
                     page+=1
                     log.debug("Working on page {}".format(page))
-                elif n == n_previous: # no more pages; literotica just returns the last set of stories over and over
-                    page=page-1 # the last increment got us the 301
+                elif new_unprocessed == new_unprocessed_previous: # no more pages; literotica just returns the last set of stories over and over
+                    page=page-1 # remove one from page count; this one is just the last one repeated
                     log.info("Finished retrieving urls for new stories; {} total pages.".format(str(page)))
                     running=False # end the new stories page retrieval loop
             log.info("Finished retrieving URLs; {} retrieved in all.".format(urls_total))
