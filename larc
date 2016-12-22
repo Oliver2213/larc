@@ -45,22 +45,25 @@ def output_categories(ctx, param, val):
 @click.command()
 @click.option('--archive-dir', '--dir', 'archive_dir', default='./literotica', help="Directory to store archive files", type=click.Path(exists=True, writable=True))
 @click.option('--base-url', default='https://literotica.com/', help='Base URL for literotica')
+@click.option('--category-workers', '-cw', default=2, show_default=True, help="""Number of category processing worker threads. Each thread will choose a category from the category file and begin downloading it's pages and extracting storyurls; once finished, if there are more categories to be processed, each thread will repeat until there are no more categories.
+If the '--download-categories' option is not provided, this option has no affect.""")
 @click.option('--download-categories', '--categories', 'mode', flag_value='categories', default=True, help="""Download all stories in all of the categories specified in category_file.
 This is expensive as far as CPU and bandwidth (for you and the literotica servers), so please only use this once to initially get all stories in all categories you want; afterwards use the '--download-new' option.""")
 @click.option('--download-new', '--new', '-n', 'mode', flag_value='new', help="""Parse Literotica's new stories and download the ones which are in a category you have set in category_file.
 For example, if your category file only has the category 'science-fiction-fantasy', only new stories of that category will be downloaded.
 
 You can use this to progressively keep your archive up-to-date with whatever categories you are interested in, while not stressing the Literotica servers by downloading each and every category page.""")
+@click.option('--download-workers', '-dw', default=2, show_default=True, help="The number of download worker threads")
+
 @click.option('--dry-run', '-d', default=False, is_flag=True, help='Collect URLs from categories specified in category_file, but do not start download worker threads')
-@click.option('--output-categories', '-oc', callback=output_categories, expose_value=False, is_eager=True, type=click.Path(file_okay=True, writable=True), help="Output all Literotica categories to the given file. Each category name will be commented with a #; to choose which ones you want archived when providing this file as category_file, just remove the number (#) from in front of each name. Leaving the space there or taking it out doesn't matter.")
+@click.option('--output-categories', '-oc', callback=output_categories, expose_value=False, is_eager=True, type=click.Path(file_okay=True, writable=True), help="Output all Literotica categories to the given file. Each category name will be commented with a #; to choose which ones you want archived when providing this file as category_file, just remove the # from in front of each name. Leaving the space there or taking it out doesn't matter.")
 @click.option('--quiet', '-q', 'verbosity', flag_value='warn', help='Be quiet unless there\'s a warning or error')
-@click.option('--thread-count', default=2, show_default=True, help="The number of download worker threads")
 @click.option('--verbose', '-v', 'verbosity', flag_value='debug', help='Be very descriptive about what\'s happening')
 @click.option('-z', '--zip-archive', default=False, help='Zip the archive directory after downloading stories')
 @click.option('-zn', '--zip-name', default='literotica_archive_'+str(datetime.datetime.now()), help='Filename for the zip archive without the .zip extention')
 
 @click.argument('category-file', type=click.Path(file_okay=True, exists=True, readable=True))
-def literoticarchiver(archive_dir, base_url, category_file, thread_count, verbosity, zip_archive, zip_name, dry_run, mode):
+def literoticarchiver(archive_dir, base_url, category_file, category_workers, download_workers, verbosity, zip_archive, zip_name, dry_run, mode):
     """ Larc - A script to archive the given literotica categories.
 
 Category_file is a path to a file that contains the categories you want archived, one per line.
@@ -92,65 +95,43 @@ All stories are stored in epub form; re-running this script will update any prev
     try: # huge try / except block to handle KeyboardInterrupt
         with open(category_file, 'r') as f:
             log.debug("Category file {} opened".format(click.format_filename(category_file)))
-            category_list = f.read().split('\n')
+            l = f.read().split('\n')
             log.debug("Category file split by lines.")
         log.debug("Removing comments and blank lines from the list of categories")
-        category_list_len = len(category_list)
-        category_list[:] = [line for line in category_list if is_comment(line)==False]
-        category_list[:] = [line.strip() for line in category_list]
-        log.debug("{} comments and blank lines removed from categories list".format(category_list_len-len(category_list)))
-        log.debug("Category file processed.")
-        url_list=deque()
-        urls_processed = 0
-        urls_total = 0
+        category_list_len = len(l)
+        l[:] = [line for line in l if is_comment(line)==False]
+        l[:] = [line.strip() for line in l]
+        log.debug("{} comments and blank lines removed from categories list".format(category_list_len-len(l)))
+        if mode == 'categories':
+            log.debug("Making category_list a deque since we're in category mode")
+            category_list = deque()
+        else:
+            category_list = []
+        category_list.extend(l) # add all cleaned up categories         log.debug("Category file processed and cleaned up")
+        url_list = deque()
+        # threadsafe counters
+        urls_processed = simple_counter()
+        urls_total = simple_counter()
+        # setup threading events
+        finished_retrieving_urls = threading.Event() # to be set when all categories in category_file have been processed
+        stop_now = threading.Event() # To be set when all threads need to exit as soon as possible
+        threads = []
         if not dry_run:
             log.info("Starting {} download worker threads.".format(thread_count))
-            finished_retrieving_urls = threading.Event()
-            stop_now = threading.Event()
-            threads = []
             log.debug("Starting download worker threads")
             for r in range(thread_count):
-                t = threading.Thread(target=download_worker, args=(url_list, archive_dir, finished_retrieving_urls, log, stop_now,))
+                t = threading.Thread(target=download_worker, args=(url_list, archive_dir, finished_retrieving_urls, log, stop_now, urls_processed))
                 t.start()
                 threads.append(t)
-            log.debug("Finished starting worker threads")
+            log.debug("Finished starting download worker threads")
         create_category_dirs(archive_dir, category_list) # Create any category directories that don't already exist
-
         if mode == 'categories':
-            log.debug("Starting category processing; {} total categories".format(len(l)))
-            for category in category_list:
-                log.info("Working on category {}".format(category))
-                page=1
-                log.debug("Starting off on page {}".format(page))
-                log.info("Starting story url retrieval")
-                running=True
-                while running:
-                    url = '{0}{1}{2}{3}'.format(base_url, 'c/', category+'/', str(page)+'-page/')
-                    log.debug("Using URL {}".format(url))
-                    r=requests.get(url, allow_redirects=False)
-                    log.debug("Status code for {} is {}".format(url, r.status_code))
-                    if r.status_code==200: # The category page url is valid; extract valid story urls
-                        log.debug("Status code valid, passing url to extract_storyurls")
-                        u = extract_storyurls(r.content)
-                        log.debug("Finished storyurl extraction")
-                        log.debug("{} total urls extracted from page".format(len(u)))
-                        u_t = []
-                        # associate every url with the current category in a tuple, so later we can send the downloaded story to the right place
-                        log.debug("Starting url-to-category asociation loop")
-                        for url in u:
-                            t = url, category
-                            u_t.append(t)
-                        log.debug("Finished creating an amalgamated url list")
-                        url_list.extend(u_t) # add our urls to the main list of ones to be downloaded
-                        log.debug("{} URLs added to the deque".format(len(u_t)))
-                        urls_total += len(u_t)
-                        page+=1
-                        log.debug("Working on page {}".format(page))
-                    elif r.status_code==301: # no more pages; literotica is trying to redirect us back to the last valid page
-                        page=page-1 # the last increment got us the 301
-                        log.info("Finished retrieving urls for category {0}; {1} total pages.".format(category, str(page)))
-                        running=False # end the category page retrieval loop
-            log.info("Finished retrieving URLs; {} retrieved in all.".format(urls_total))
+            log.debug("Starting category processing; {} total categories and {} category processing threads".format(len(category_list), category_workers))
+            for r in range(category_workers):
+                t = threading.Thread(target=category_worker, args=(base_url, category_list, log, stop_now, url_list, urls_total,))
+                t.start()
+                threads.append(t)
+            log.debug("Finished starting category processing worker threads")
         elif mode == 'new':
             log.info("'Starting new story processing; {} total categories".format(len(category_list)))
             log.debug("Starting off on page 1")
@@ -189,19 +170,19 @@ All stories are stored in epub form; re-running this script will update any prev
             shutil.make_archive(zip_name, "zip", archive_dir)
             log.info("Finished zipping")
     except KeyboardInterrupt:
-        if not dry_run:
-            # We've got some threads to kill
-            # The idea here is to set one flag, and all worker threads will notice it in their while loops and stop, then return
-            stop_now.set()
+        log.info("Keyboard interrupt; stopping all threads and exiting")
+        # We've got some threads to kill
+        # The idea here is to set one flag, and all worker threads will notice it in their while loops and stop, then return
+        stop_now.set()
 
 def download_worker(d, archive_dir, finished_retrieving_urls, log, stop_now):
     """Worker function that pops and downloads a url off the provided deque."""
-    log.debug("Worker started")
+    log.debug("Download worker started")
     while not stop_now.isSet(): # As long as the stop_now flag isn't set, we can loop
         try:
             u = d.pop()
             subprocess.call(['fanficfare', '--update-epub', u[0]], cwd=os.path.join(archive_dir, u[1]), stdout=None)
-            urls_processed += 1
+            urls_processed.increment()
         except IndexError: # No more items in the deque to pop
             if finished_retrieving_urls.isSet(): # if we're done getting urls
                 log.debug("Deque is empty and we're done retrieving URLs")
@@ -272,6 +253,74 @@ def parse_new_stories(p):
     else: # the number of storyurls and categories parsed doesn't match
         log.critical("Error parsing new stories page; {0} storyurls, and {1} category urls parsed".format(len(story_urls), len(category_names)))
         sys.exit(1)
+
+class simple_counter(object):
+    """Simple counter that is threadsafe"""
+    def __init__(self, start_val=0, default_step=1):
+        self.value = start_val
+        self.default_step = default_step
+        self.lock = threading.Lock()
+    
+    def decrement(self, num=None):
+        """Decrement the counter by num or default_step if num isn't provided"""
+        with self.lock:
+            if num is not None:
+                self.value -= num
+            else: # no value provided; use default_step
+                self.value -= self.default_step
+    
+    def increment(self, num=None):
+        """increment the counter by num or default_step if num isn't provided"""
+        with self.lock:
+            if num is not None:
+                self.value += num
+            else: # no value provided; use default_step
+                self.value += self.default_step
+
+def category_worker(base_url, d, log, stop_now, url_list, urls_total):
+    """Worker function that pops a category off of the provided deque and begins extracting storyurls from each page, then associating them with the current category and putting the resulting storytuple in the download queue
+    """
+    log.debug("Category worker started")
+    while not stop_now.isSet(): # loop until we're told to stop
+        try:
+            category = d.pop()
+            log.info("Working on category {}".format(category))
+            page=1
+            log.debug("Starting off on page {}".format(page))
+            log.debug("Starting story url retrieval")
+            running=True
+            while running and not stop_now.isSet(): # loop until we're finished retrieving and processing pages for this category, or we're told to stop
+                url = '{0}{1}{2}{3}'.format(base_url, 'c/', category+'/', str(page)+'-page/')
+                log.debug("Using URL {}".format(url))
+                r=requests.get(url, allow_redirects=False)
+                log.debug("Status code for {} is {}".format(url, r.status_code))
+                if r.status_code==200: # The category page url is valid; extract valid story urls
+                    log.debug("Status code valid, passing url to extract_storyurls")
+                    u = extract_storyurls(r.content)
+                    log.debug("Finished storyurl extraction")
+                    log.debug("{} total urls extracted from page".format(len(u)))
+                    u_t = []
+                    # associate every url with the current category in a tuple, so later we can send the downloaded story to the right place
+                    log.debug("Starting url-to-category asociation loop")
+                    for url in u:
+                        t = url, category
+                        u_t.append(t)
+                    log.debug("Finished creating storytuple list")
+                    url_list.extend(u_t) # add our urls to the main list of ones to be downloaded
+                    log.debug("{} URLs added to the deque".format(len(u_t)))
+                    urls_total.increment(len(u_t))
+                    page+=1
+                    log.debug("Working on page {}".format(page))
+                elif r.status_code==301: # no more pages; literotica is trying to redirect us back to the last valid page
+                    page=page-1 # the last increment got us the 301
+                    log.info("Finished retrieving urls for category {0}; {1} total pages.".format(category, str(page)))
+                    running=False # end the category page retrieval loop
+        except IndexError: # No more categories to process
+            log.debug("No more categories to process")
+            # breaking the loop manually is necessary because stop_now is a flag that gets set when a keyboard interrupt is detected;
+            # This means if we aren't interrupted, this loop will run forever, even if the categories deque is empty
+            # I suppose an extra condition on the loop that checks the length of the categories deque would be more efficient,, buuuut I just now thought of that and don't feel like fixing all the spacing. A change for later, I guess
+            break # exit the while loop
 
 if __name__ == '__main__':
     literoticarchiver()
