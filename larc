@@ -46,6 +46,8 @@ def output_categories(ctx, param, val):
 @click.option('--archive-dir', '--dir', 'archive_dir', default='./literotica', help="Directory to store archive files", type=click.Path(exists=True, writable=True))
 @click.option('--base-url', default='https://literotica.com/', help='Base URL for literotica')
 @click.option('--category-workers', '-cw', default=2, show_default=True, help="""Number of category processing worker threads. Each thread will choose a category from the category file and begin downloading it's pages and extracting storyurls; once finished, if there are more categories to be processed, each thread will repeat until there are no more categories.
+If this value is greater than the number of categories in category_file, as many category worker threads will be started as there are categories.
+Please do not set this to a high value; respect the Literotica servers.
 If the '--download-categories' option is not provided, this option has no affect.""")
 @click.option('--download-categories', '--categories', 'mode', flag_value='categories', default=True, help="""Download all stories in all of the categories specified in category_file.
 This is expensive as far as CPU and bandwidth (for you and the literotica servers), so please only use this once to initially get all stories in all categories you want; afterwards use the '--download-new' option.""")
@@ -127,6 +129,9 @@ All stories are stored in epub form; re-running this script will update any prev
         create_category_dirs(archive_dir, category_list) # Create any category directories that don't already exist
         if mode == 'categories':
             log.debug("Starting category processing; {} total categories and {} category processing threads".format(len(category_list), category_workers))
+            if category_workers > len(category_list):
+                log.debug("Requested more category processing worker threads than there are actual categories; limiting to {}".format(len(category_list)))
+                category_workers = len(category_list)
             for r in range(category_workers):
                 t = threading.Thread(target=category_worker, args=(base_url, category_list, log, stop_now, url_list, urls_total,))
                 t.start()
