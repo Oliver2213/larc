@@ -121,7 +121,7 @@ All stories are stored in epub form; re-running this script will update any prev
         if not dry_run:
             log.info("Starting {} download worker threads.".format(download_workers))
             for r in range(download_workers):
-                t = threading.Thread(target=download_worker, args=(url_list, archive_dir, finished_retrieving_urls, log, stop_now, urls_processed))
+                t = threading.Thread(name='download_worker '+str(r+1), target=download_worker, args=(url_list, archive_dir, finished_retrieving_urls, log, stop_now, urls_processed))
                 t.start()
                 threads.append(t)
             log.debug("Finished starting download worker threads")
@@ -132,7 +132,7 @@ All stories are stored in epub form; re-running this script will update any prev
                 log.debug("Requested more category processing worker threads than there are actual categories; limiting to {}".format(len(category_list)))
                 category_workers = len(category_list)
             for r in range(category_workers):
-                t = threading.Thread(target=category_worker, args=(base_url, category_list, log, stop_now, url_list, urls_total,))
+                t = threading.Thread(name='category_worker '+str(category_workers+1), target=category_worker, args=(base_url, category_list, log, stop_now, url_list, urls_total,))
                 t.start()
                 threads.append(t)
             log.debug("Finished starting category processing worker threads")
@@ -164,10 +164,14 @@ All stories are stored in epub form; re-running this script will update any prev
                     running=False # end the new stories page retrieval loop
             log.info("Finished retrieving URLs; {} retrieved in all.".format(urls_total.value))
 
-
-        if not dry_run:
-            log.debug("Setting flag so download worker threads know it's safe to exit if the deque is empty")
-            finished_retrieving_urls.set() # done collecting urls now; if threads notice that the deque is empty they can exit
+        if mode == 'categories':
+            # This is probably a really horrible way to do this
+            while are_category_workers_running(): # as long as we have category processing threads active
+                # Do nothing; just block so code below doesn't run
+                continue
+        log.debug("All storytuples collected")
+        log.debug("Setting flag so download worker threads know it's safe to exit if the deque is empty")
+        finished_retrieving_urls.set() # done collecting urls now; if threads notice that the deque is empty they can exit
 
         if zip_archive and not dry_run:
             log.info("Zipping up the archive directory...")
@@ -325,6 +329,21 @@ def category_worker(base_url, d, log, stop_now, url_list, urls_total):
             # This means if we aren't interrupted, this loop will run forever, even if the categories deque is empty
             # I suppose an extra condition on the loop that checks the length of the categories deque would be more efficient,, buuuut I just now thought of that and don't feel like fixing all the spacing. A change for later, I guess
             break # exit the while loop
+
+def are_category_workers_running():
+    """Determine if there are any category processing worker threads currently running
+    return true if so, false if otherwise
+    """
+    current_thread = threading.getThread()
+    count = 0
+    for thread in threading.enumerate():
+        if thread is not current_thread:
+            if thread.name.startswith('category_worker'):
+                count += 1
+    if count > 0:
+        return True # there is at least one category worker thread running
+    else:
+        return False
 
 if __name__ == '__main__':
     literoticarchiver()
