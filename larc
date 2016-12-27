@@ -129,7 +129,7 @@ All stories are stored in epub form; re-running this script will update any prev
         if mode == 'categories':
             log.debug("Starting category processing; {} total categories and {} category processing threads".format(len(category_list), category_workers))
             if category_workers > len(category_list):
-                log.debug("Requested more category processing worker threads than there are actual categories; limiting to {}".format(len(category_list)))
+                log.warn("Requested more category processing worker threads than there are actual categories; limiting to {}".format(len(category_list)))
                 category_workers = len(category_list)
             for r in range(category_workers):
                 t = threading.Thread(name='category_worker '+str(category_workers+1), target=category_worker, args=(base_url, category_list, log, stop_now, url_list, urls_total,))
@@ -166,7 +166,7 @@ All stories are stored in epub form; re-running this script will update any prev
 
         if mode == 'categories':
             # This is probably a really horrible way to do this
-            while are_category_workers_running(): # as long as we have category processing threads active
+            while are_category_workers_running() == True: # as long as we have category processing threads active
                 # Do nothing; just block so code below doesn't run
                 continue
         log.debug("All storytuples collected")
