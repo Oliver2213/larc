@@ -179,7 +179,7 @@ All stories are stored in epub form; re-running this script will update any prev
         # The idea here is to set one flag, and all worker threads will notice it in their while loops and stop, then return
         stop_now.set()
 
-def download_worker(d, archive_dir, finished_retrieving_urls, log, stop_now):
+def download_worker(d, archive_dir, finished_retrieving_urls, log, stop_now, urls_processed):
     """Worker function that pops and downloads a url off the provided deque."""
     log.debug("Download worker started")
     while not stop_now.isSet(): # As long as the stop_now flag isn't set, we can loop
