@@ -334,7 +334,7 @@ def are_category_workers_running():
     """Determine if there are any category processing worker threads currently running
     return true if so, false if otherwise
     """
-    current_thread = threading.getThread()
+    current_thread = threading.currentThread()
     count = 0
     for thread in threading.enumerate():
         if thread is not current_thread:
