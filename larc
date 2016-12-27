@@ -132,7 +132,7 @@ All stories are stored in epub form; re-running this script will update any prev
                 log.warn("Requested more category processing worker threads than there are actual categories; limiting to {}".format(len(category_list)))
                 category_workers = len(category_list)
             for r in range(category_workers):
-                t = threading.Thread(name='category_worker '+str(category_workers+1), target=category_worker, args=(base_url, category_list, log, stop_now, url_list, urls_total,))
+                t = threading.Thread(name='category_worker '+str(r+1), target=category_worker, args=(base_url, category_list, log, stop_now, url_list, urls_total,))
                 t.start()
                 threads.append(t)
             log.debug("Finished starting category processing worker threads")
