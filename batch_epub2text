@@ -1,0 +1,64 @@
+#!/usr/bin/python
+# batch_e2txt, a quick script to batch convert a bunch of epubs in category directories to text
+# You must have epub2txt somewhere on your path for this to work
+# Author: Blake Oliver <oliver22213@me.com>
+
+from collections import deque
+import glob
+import os
+import subprocess
+import threading
+
+import click
+
+
+@click.command()
+@click.option('-d', '--dir', type=click.Path(exists=True, writable=True), default=".", help="""Directory that has category subdirectories in it""", show_default=True)
+@click.option('-o', '--output-dir', '--output-directory', default='text', show_default=True, help="""The directory to output text files into. By default will be created inside 'dir'""")
+@click.option('-tc', '--thread-count', default=4, show_default=True, help="""The number of worker threads that will process files""")
+def convert(dir, output_directory, thread_count):
+	"""Batch converts epubs into text files, using epub2txt.
+	You must have an epub2txt binary somewhere on your path for this to work properly.
+	"""
+	dq = deque() # deque of filepaths
+	finished = threading.Event()
+	
+	# start workers
+	for r in range(thread_count):
+		t = threading.Thread(target=worker, args=(dq, dir, output_directory, finished))
+		t.start()
+	print("Workers started.")
+	for d in os.listdir(dir):
+		if os.path.isdir(os.path.abspath(d)):
+			if os.path.exists(os.path.join(os.path.abspath(dir), output_directory, d)) == False:
+				print("Created category directory for {}.".format(d))
+				os.makedirs(os.path.join(os.path.abspath(dir), output_directory, d))
+			# os.chdir(os.path.join(dir, os.path.abspath(d)))
+			g = glob.glob(os.path.join(d, "*.epub")) # get a list of all epub files
+			for f in g: # for each one
+				dq.append((d, os.path.abspath(os.path.join(dir, f)),)) # add category name, filepath tuple to deque
+	# We've finished adding all the epub filepaths to the deque
+	print("Finished adding filepaths to deque.")
+	finished.set() # let threads know if the deque is empty they can exit
+
+
+def worker(dq, dir, output_dir, finished):
+	"""Worker function to call epub2txt in a subprocess and redirect stdout to a text file"""
+	print("Worker started.")
+	while True:
+		try:
+			d = dq.pop()
+			print("Working on {}.".format(d[1]))
+			textfile_name = os.path.split(d[1])[1].split('.')[:-1]
+			textfile_name = "".join(textfile_name)
+			# The code above splits up the absolute path of d, a file path extracted from our deque, then splits that string (the last path component, the filename) and sets textfile_name to the filename without the last extention
+			with open(os.path.join(os.path.abspath(dir), output_dir, d[0], textfile_name+'.txt'), 'w+') as f: # open a new text file with the original filename, changing it's last extention to .txt
+				subprocess.call(["epub2txt", d[1]], stdout=f)
+			print("Finished.")
+		except IndexError:
+			if finished.is_set():
+				print("No more files to process, worker exiting.")
+				break # exit while loop
+
+if __name__ == '__main__':
+	convert()
