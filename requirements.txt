@@ -1,3 +1,4 @@
 click
 fanficfare
 requests
+beautifulsoup4
